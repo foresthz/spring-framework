@@ -23,6 +23,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.SubscribableChannel;
 import org.springframework.messaging.simp.broker.SimpleBrokerMessageHandler;
 import org.springframework.messaging.simp.stomp.StompBrokerRelayMessageHandler;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.util.Assert;
 import org.springframework.util.PathMatcher;
 
@@ -135,6 +136,16 @@ public class MessageBrokerRegistry {
 
 	protected String getUserDestinationPrefix() {
 		return this.userDestinationPrefix;
+	}
+
+	protected String getUserDestinationBroadcast() {
+		return (this.brokerRelayRegistration != null ?
+				this.brokerRelayRegistration.getUserDestinationBroadcast() : null);
+	}
+
+	protected String getUserRegistryBroadcast() {
+		return (this.brokerRelayRegistration != null ?
+				this.brokerRelayRegistration.getUserRegistryBroadcast() : null);
 	}
 
 	/**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2008 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,17 @@
 package org.springframework.web.util;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.Test;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServletServerHttpRequest;
+import org.springframework.mock.web.test.MockHttpServletRequest;
 import org.springframework.util.MultiValueMap;
 
 import static org.junit.Assert.*;
@@ -30,6 +36,7 @@ import static org.junit.Assert.*;
  * @author Juergen Hoeller
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
+ * @author Sebastien Deleuze
  */
 public class WebUtilsTests {
 
@@ -96,6 +103,48 @@ public class WebUtilsTests {
 		variables = WebUtils.parseMatrixVariables("colors=red;colors=blue;colors=green");
 		assertEquals(1, variables.size());
 		assertEquals(Arrays.asList("red", "blue", "green"), variables.get("colors"));
+	}
+
+	@Test
+	public void isValidOriginSuccess() {
+
+		List<String> allowed = Collections.emptyList();
+		assertTrue(checkOrigin("mydomain1.com", -1, "http://mydomain1.com", allowed));
+		assertTrue(checkOrigin("mydomain1.com", -1, "http://mydomain1.com:80", allowed));
+		assertTrue(checkOrigin("mydomain1.com", 443, "https://mydomain1.com", allowed));
+		assertTrue(checkOrigin("mydomain1.com", 443, "https://mydomain1.com:443", allowed));
+		assertTrue(checkOrigin("mydomain1.com", 123, "http://mydomain1.com:123", allowed));
+		assertTrue(checkOrigin("mydomain1.com", -1, "ws://mydomain1.com", allowed));
+		assertTrue(checkOrigin("mydomain1.com", 443, "wss://mydomain1.com", allowed));
+
+		allowed = Collections.singletonList("*");
+		assertTrue(checkOrigin("mydomain1.com", -1, "http://mydomain2.com", allowed));
+
+		allowed = Collections.singletonList("http://mydomain1.com");
+		assertTrue(checkOrigin("mydomain2.com", -1, "http://mydomain1.com", allowed));
+	}
+
+	@Test
+	public void isValidOriginFailure() {
+
+		List<String> allowed = Collections.emptyList();
+		assertFalse(checkOrigin("mydomain1.com", -1, "http://mydomain2.com", allowed));
+		assertFalse(checkOrigin("mydomain1.com", -1, "https://mydomain1.com", allowed));
+		assertFalse(checkOrigin("mydomain1.com", -1, "invalid-origin", allowed));
+
+		allowed = Collections.singletonList("http://mydomain1.com");
+		assertFalse(checkOrigin("mydomain2.com", -1, "http://mydomain3.com", allowed));
+	}
+
+	private boolean checkOrigin(String serverName, int port, String originHeader, List<String> allowed) {
+		MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+		ServerHttpRequest request = new ServletServerHttpRequest(servletRequest);
+		servletRequest.setServerName(serverName);
+		if (port != -1) {
+			servletRequest.setServerPort(port);
+		}
+		request.getHeaders().set(HttpHeaders.ORIGIN, originHeader);
+		return WebUtils.isValidOrigin(request, allowed);
 	}
 
 }

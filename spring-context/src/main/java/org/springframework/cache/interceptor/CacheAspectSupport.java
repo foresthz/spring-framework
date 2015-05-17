@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.support.SimpleValueWrapper;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.expression.AnnotatedElementKey;
 import org.springframework.expression.EvaluationContext;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
@@ -183,7 +184,8 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 			}
 			catch (NoUniqueBeanDefinitionException ex) {
 				throw new IllegalStateException("No CacheResolver specified, and no unique bean of type " +
-						"CacheManager found. Mark one as primary or declare a specific CacheManager to use.");
+						"CacheManager found. Mark one as primary (or give it the name 'cacheManager') or " +
+						"declare a specific CacheManager to use, that serves as the default one.");
 			}
 			catch (NoSuchBeanDefinitionException ex) {
 				throw new IllegalStateException("No CacheResolver specified, and no bean of type CacheManager found. " +
@@ -287,6 +289,7 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 	 */
 	protected void clearMetadataCache() {
 		this.metadataCache.clear();
+		this.evaluator.clear();
 	}
 
 	protected Object execute(CacheOperationInvoker invoker, Object target, Method method, Object[] args) {
@@ -433,6 +436,11 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 				if (cached != null) {
 					return cached;
 				}
+				else {
+					if (logger.isTraceEnabled()) {
+						logger.trace("No cache entry for key '" + key + "' in cache(s) " + context.getCacheNames());
+					}
+				}
 			}
 		}
 		return null;
@@ -460,6 +468,9 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 		for (Cache cache : context.getCaches()) {
 			Cache.ValueWrapper wrapper = doGet(cache, key);
 			if (wrapper != null) {
+				if (logger.isTraceEnabled()) {
+					logger.trace("Cache entry for key '" + key + "' found in cache '" + cache.getName() + "'");
+				}
 				return wrapper;
 			}
 		}
@@ -482,7 +493,7 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 					"using named params on classes without debug info?) " + context.metadata.operation);
 		}
 		if (logger.isTraceEnabled()) {
-			logger.trace("Computed cache key " + key + " for operation " + context.metadata.operation);
+			logger.trace("Computed cache key '" + key + "' for operation " + context.metadata.operation);
 		}
 		return key;
 	}
@@ -546,14 +557,17 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 
 		private final Collection<? extends Cache> caches;
 
-		private final MethodCacheKey methodCacheKey;
+		private final Collection<String> cacheNames;
+
+		private final AnnotatedElementKey methodCacheKey;
 
 		public CacheOperationContext(CacheOperationMetadata metadata, Object[] args, Object target) {
 			this.metadata = metadata;
 			this.args = extractArgs(metadata.method, args);
 			this.target = target;
 			this.caches = CacheAspectSupport.this.getCaches(this, metadata.cacheResolver);
-			this.methodCacheKey = new MethodCacheKey(metadata.method, metadata.targetClass);
+			this.cacheNames = createCacheNames(this.caches);
+			this.methodCacheKey = new AnnotatedElementKey(metadata.method, metadata.targetClass);
 		}
 
 		@Override
@@ -631,6 +645,18 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 		protected Collection<? extends Cache> getCaches() {
 			return this.caches;
 		}
+
+		protected Collection<String> getCacheNames() {
+			return this.cacheNames;
+		}
+
+		private Collection<String> createCacheNames(Collection<? extends Cache> caches) {
+			Collection<String> names = new ArrayList<String>();
+			for (Cache cache : caches) {
+				names.add(cache.getName());
+			}
+			return names;
+		}
 	}
 
 
@@ -659,11 +685,11 @@ public abstract class CacheAspectSupport extends AbstractCacheInvoker
 
 		private final CacheOperation cacheOperation;
 
-		private final MethodCacheKey methodCacheKey;
+		private final AnnotatedElementKey methodCacheKey;
 
 		private CacheOperationCacheKey(CacheOperation cacheOperation, Method method, Class<?> targetClass) {
 			this.cacheOperation = cacheOperation;
-			this.methodCacheKey = new MethodCacheKey(method, targetClass);
+			this.methodCacheKey = new AnnotatedElementKey(method, targetClass);
 		}
 
 		@Override

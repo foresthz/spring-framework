@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.messaging.simp.broker;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 import org.junit.Before;
@@ -30,6 +31,7 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.util.MultiValueMap;
 
 import static org.junit.Assert.*;
+
 
 /**
  * Test fixture for {@link org.springframework.messaging.simp.broker.DefaultSubscriptionRegistry}.
@@ -248,6 +250,32 @@ public class DefaultSubscriptionRegistryTests {
 	}
 
 	@Test
+	public void registerSubscriptionWithSelector() throws Exception {
+
+		String sessionId = "sess01";
+		String subscriptionId = "subs01";
+		String destination = "/foo";
+		String selector = "headers.foo == 'bar'";
+
+		this.registry.registerSubscription(subscribeMessage(sessionId, subscriptionId, destination, selector));
+
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create();
+		accessor.setDestination(destination);
+		accessor.setNativeHeader("foo", "bar");
+		Message<?> message = MessageBuilder.createMessage("", accessor.getMessageHeaders());
+
+		MultiValueMap<String, String> actual = this.registry.findSubscriptions(message);
+		assertEquals(1, actual.size());
+		assertEquals(Arrays.asList(subscriptionId), actual.get(sessionId));
+
+		accessor = SimpMessageHeaderAccessor.create();
+		accessor.setDestination(destination);
+		message = MessageBuilder.createMessage("", accessor.getMessageHeaders());
+
+		assertEquals(0, this.registry.findSubscriptions(message).size());
+	}
+
+	@Test
 	public void unregisterSubscription() {
 
 		List<String> sessIds = Arrays.asList("sess01", "sess02", "sess03");
@@ -326,28 +354,53 @@ public class DefaultSubscriptionRegistryTests {
 		assertEquals("Expected no elements " + actual, 0, actual.size());
 	}
 
+	// SPR-12665
 
-	private Message<?> subscribeMessage(String sessionId, String subscriptionId, String destination) {
-		SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create(SimpMessageType.SUBSCRIBE);
-		headers.setSessionId(sessionId);
-		headers.setSubscriptionId(subscriptionId);
-		if (destination != null) {
-			headers.setDestination(destination);
-		}
-		return MessageBuilder.withPayload("").copyHeaders(headers.toMap()).build();
+	@Test
+	@SuppressWarnings("rawtypes")
+	public void findSubscriptionsReturnsMapSafeToIterate() throws Exception {
+		this.registry.registerSubscription(subscribeMessage("sess1", "1", "/foo"));
+		this.registry.registerSubscription(subscribeMessage("sess2", "1", "/foo"));
+		MultiValueMap<String, String> subscriptions = this.registry.findSubscriptions(message("/foo"));
+		assertEquals(2, subscriptions.size());
+
+		Iterator iterator = subscriptions.entrySet().iterator();
+		iterator.next();
+
+		this.registry.registerSubscription(subscribeMessage("sess3", "1", "/foo"));
+
+		iterator.next();
+		// no ConcurrentModificationException
 	}
 
-	private Message<?> unsubscribeMessage(String sessionId, String subscriptionId) {
-		SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create(SimpMessageType.UNSUBSCRIBE);
-		headers.setSessionId(sessionId);
-		headers.setSubscriptionId(subscriptionId);
-		return MessageBuilder.withPayload("").copyHeaders(headers.toMap()).build();
+	private Message<?> subscribeMessage(String sessionId, String subscriptionId, String destination) {
+		return subscribeMessage(sessionId, subscriptionId, destination, null);
+	}
+
+	private Message<?> subscribeMessage(String sessionId, String subId, String dest, String selector) {
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.SUBSCRIBE);
+		accessor.setSessionId(sessionId);
+		accessor.setSubscriptionId(subId);
+		if (dest != null) {
+			accessor.setDestination(dest);
+		}
+		if (selector != null) {
+			accessor.setNativeHeader("selector", selector);
+		}
+		return MessageBuilder.createMessage("", accessor.getMessageHeaders());
+	}
+
+	private Message<?> unsubscribeMessage(String sessionId, String subId) {
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create(SimpMessageType.UNSUBSCRIBE);
+		accessor.setSessionId(sessionId);
+		accessor.setSubscriptionId(subId);
+		return MessageBuilder.createMessage("", accessor.getMessageHeaders());
 	}
 
 	private Message<?> message(String destination) {
-		SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
-		headers.setDestination(destination);
-		return MessageBuilder.withPayload("").copyHeaders(headers.toMap()).build();
+		SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.create();
+		accessor.setDestination(destination);
+		return MessageBuilder.createMessage("", accessor.getMessageHeaders());
 	}
 
 	private List<String> sort(List<String> list) {

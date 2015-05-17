@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,20 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.simp.SimpSessionScope;
+import org.springframework.messaging.simp.annotation.support.SimpAnnotationMethodMessageHandler;
 import org.springframework.messaging.simp.broker.AbstractBrokerMessageHandler;
 import org.springframework.messaging.simp.config.AbstractMessageBrokerConfiguration;
 import org.springframework.messaging.simp.stomp.StompBrokerRelayMessageHandler;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
+import org.springframework.messaging.simp.user.UserSessionRegistryAdapter;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.config.WebSocketMessageBrokerStats;
 import org.springframework.web.socket.handler.WebSocketHandlerDecoratorFactory;
+import org.springframework.web.socket.messaging.DefaultSimpUserRegistry;
 import org.springframework.web.socket.messaging.SubProtocolWebSocketHandler;
+import org.springframework.web.socket.messaging.WebSocketAnnotationMethodMessageHandler;
 
 /**
  * Extends {@link AbstractMessageBrokerConfiguration} and adds configuration for
@@ -48,12 +53,18 @@ public abstract class WebSocketMessageBrokerConfigurationSupport extends Abstrac
 	private WebSocketTransportRegistration transportRegistration;
 
 
+	@Override
+	protected SimpAnnotationMethodMessageHandler createAnnotationMethodMessageHandler() {
+		return new WebSocketAnnotationMethodMessageHandler(clientInboundChannel(),
+				clientOutboundChannel(), brokerMessagingTemplate());
+	}
+
 	@Bean
 	public HandlerMapping stompWebSocketHandlerMapping() {
-		WebSocketHandler handler = subProtocolWebSocketHandler();
-		handler = decorateWebSocketHandler(handler);
-		WebMvcStompEndpointRegistry registry = new WebMvcStompEndpointRegistry(handler,
-				getTransportRegistration(), userSessionRegistry(), messageBrokerSockJsTaskScheduler());
+		WebSocketHandler handler = decorateWebSocketHandler(subProtocolWebSocketHandler());
+		WebSocketTransportRegistration transport = getTransportRegistration();
+		ThreadPoolTaskScheduler scheduler = messageBrokerTaskScheduler();
+		WebMvcStompEndpointRegistry registry = new WebMvcStompEndpointRegistry(handler, transport, scheduler);
 		registry.setApplicationContext(getApplicationContext());
 		registerStompEndpoints(registry);
 		return registry.getHandlerMapping();
@@ -82,32 +93,20 @@ public abstract class WebSocketMessageBrokerConfigurationSupport extends Abstrac
 	protected void configureWebSocketTransport(WebSocketTransportRegistration registry) {
 	}
 
-	protected abstract void registerStompEndpoints(StompEndpointRegistry registry);
-
-	/**
-	 * The default TaskScheduler to use if none is configured via
-	 * {@link SockJsServiceRegistration#setTaskScheduler(org.springframework.scheduling.TaskScheduler)}, i.e.
-	 * <pre class="code">
-	 * &#064;Configuration
-	 * &#064;EnableWebSocketMessageBroker
-	 * public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
-	 *
-	 *   public void registerStompEndpoints(StompEndpointRegistry registry) {
-	 *     registry.addEndpoint("/stomp").withSockJS().setTaskScheduler(myScheduler());
-	 *   }
-	 *
-	 *   // ...
-	 * }
-	 * </pre>
-	 */
-	@Bean
-	public ThreadPoolTaskScheduler messageBrokerSockJsTaskScheduler() {
-		ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-		scheduler.setThreadNamePrefix("MessageBrokerSockJS-");
-		scheduler.setPoolSize(Runtime.getRuntime().availableProcessors());
-		scheduler.setRemoveOnCancelPolicy(true);
-		return scheduler;
+	@Override
+	@SuppressWarnings("deprecation")
+	protected SimpUserRegistry createLocalUserRegistry() {
+		org.springframework.messaging.simp.user.UserSessionRegistry sessionRegistry = userSessionRegistry();
+		if (sessionRegistry == null) {
+			return new DefaultSimpUserRegistry();
+		}
+		else {
+			return (userSessionRegistry() instanceof SimpUserRegistry ?
+					(SimpUserRegistry) userSessionRegistry() : new UserSessionRegistryAdapter(sessionRegistry));
+		}
 	}
+
+	protected abstract void registerStompEndpoints(StompEndpointRegistry registry);
 
 	@Bean
 	public static CustomScopeConfigurer webSocketScopeConfigurer() {
@@ -130,7 +129,7 @@ public abstract class WebSocketMessageBrokerConfigurationSupport extends Abstrac
 		stats.setStompBrokerRelay(brokerRelay);
 		stats.setInboundChannelExecutor(clientInboundChannelExecutor());
 		stats.setOutboundChannelExecutor(clientOutboundChannelExecutor());
-		stats.setSockJsTaskScheduler(messageBrokerSockJsTaskScheduler());
+		stats.setSockJsTaskScheduler(messageBrokerTaskScheduler());
 		return stats;
 	}
 

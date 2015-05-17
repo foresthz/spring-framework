@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.UndeclaredThrowableException;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -78,6 +79,7 @@ import org.springframework.util.StringUtils;
  * @author Rod Johnson
  * @author Juergen Hoeller
  * @author Rob Harrop
+ * @author Stephane Nicoll
  * @since 15 April 2001
  * @see #registerCustomEditor
  * @see #setPropertyValues
@@ -646,7 +648,7 @@ public class BeanWrapperImpl extends AbstractPropertyAccessor implements BeanWra
 				return CollectionFactory.createMap(type, (keyDesc != null ? keyDesc.getType() : null), 16);
 			}
 			else {
-				return type.newInstance();
+				return BeanUtils.instantiate(type);
 			}
 		}
 		catch (Exception ex) {
@@ -978,6 +980,14 @@ public class BeanWrapperImpl extends AbstractPropertyAccessor implements BeanWra
 					}
 					Object convertedValue = convertIfNecessary(propertyName, oldValue, pv.getValue(),
 							requiredType, TypeDescriptor.nested(property(pd), tokens.keys.length));
+					int length = Array.getLength(propValue);
+					if (arrayIndex >= length && arrayIndex < this.autoGrowCollectionLimit) {
+						Class<?> componentType = propValue.getClass().getComponentType();
+						Object newArray = Array.newInstance(componentType, arrayIndex + 1);
+						System.arraycopy(propValue, 0, newArray, 0, length);
+						setPropertyValue(actualName, newArray);
+						propValue = getPropertyValue(actualName);
+					}
 					Array.set(propValue, arrayIndex, convertedValue);
 				}
 				catch (IndexOutOfBoundsException ex) {
@@ -1046,7 +1056,7 @@ public class BeanWrapperImpl extends AbstractPropertyAccessor implements BeanWra
 			else {
 				throw new InvalidPropertyException(getRootClass(), this.nestedPath + propertyName,
 						"Property referenced in indexed property path '" + propertyName +
-						"' is neither an array nor a List nor a Map; returned value was [" + pv.getValue() + "]");
+						"' is neither an array nor a List nor a Map; returned value was [" + propValue + "]");
 			}
 		}
 
@@ -1170,7 +1180,12 @@ public class BeanWrapperImpl extends AbstractPropertyAccessor implements BeanWra
 					throw new TypeMismatchException(propertyChangeEvent, pd.getPropertyType(), ex.getTargetException());
 				}
 				else {
-					throw new MethodInvocationException(propertyChangeEvent, ex.getTargetException());
+					Throwable cause = ex.getTargetException();
+					if (cause instanceof UndeclaredThrowableException) {
+						// May happen e.g. with Groovy-generated methods
+						cause = cause.getCause();
+					}
+					throw new MethodInvocationException(propertyChangeEvent, cause);
 				}
 			}
 			catch (Exception ex) {

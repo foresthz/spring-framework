@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@
 package org.springframework.web.socket.sockjs.transport;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -58,6 +56,7 @@ import org.springframework.web.socket.sockjs.support.AbstractSockJsService;
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
+ * @author Sebastien Deleuze
  * @since 4.0
  */
 public class TransportHandlingSockJsService extends AbstractSockJsService implements SockJsServiceConfig {
@@ -148,7 +147,7 @@ public class TransportHandlingSockJsService extends AbstractSockJsService implem
 	 * Return the configured WebSocket handshake request interceptors.
 	 */
 	public List<HandshakeInterceptor> getHandshakeInterceptors() {
-		return Collections.unmodifiableList(this.interceptors);
+		return this.interceptors;
 	}
 
 
@@ -194,39 +193,43 @@ public class TransportHandlingSockJsService extends AbstractSockJsService implem
 
 		TransportType transportType = TransportType.fromValue(transport);
 		if (transportType == null) {
-			logger.error("Unknown transport type for " + request.getURI());
+			if (logger.isWarnEnabled()) {
+				logger.warn("Unknown transport type for " + request.getURI());
+			}
 			response.setStatusCode(HttpStatus.NOT_FOUND);
 			return;
 		}
 
 		TransportHandler transportHandler = this.handlers.get(transportType);
 		if (transportHandler == null) {
-			logger.error("No TransportHandler for " + request.getURI());
+			if (logger.isWarnEnabled()) {
+				logger.warn("No TransportHandler for " + request.getURI());
+			}
 			response.setStatusCode(HttpStatus.NOT_FOUND);
 			return;
 		}
 
-		HttpMethod supportedMethod = transportType.getHttpMethod();
-		if (!supportedMethod.equals(request.getMethod())) {
-			if (HttpMethod.OPTIONS.equals(request.getMethod()) && transportType.supportsCors()) {
-				if (checkAndAddCorsHeaders(request, response, HttpMethod.OPTIONS, supportedMethod)) {
-					response.setStatusCode(HttpStatus.NO_CONTENT);
-					addCacheHeaders(response);
-				}
-			}
-			else if (transportType.supportsCors()) {
-				sendMethodNotAllowed(response, supportedMethod, HttpMethod.OPTIONS);
-			}
-			else {
-				sendMethodNotAllowed(response, supportedMethod);
-			}
-			return;
-		}
-
-		HandshakeInterceptorChain chain = new HandshakeInterceptorChain(this.interceptors, handler);
 		SockJsException failure = null;
+		HandshakeInterceptorChain chain = new HandshakeInterceptorChain(this.interceptors, handler);
 
 		try {
+			HttpMethod supportedMethod = transportType.getHttpMethod();
+			if (!supportedMethod.equals(request.getMethod())) {
+				if (HttpMethod.OPTIONS.equals(request.getMethod()) && transportType.supportsCors()) {
+					if (checkOrigin(request, response, HttpMethod.OPTIONS, supportedMethod)) {
+						response.setStatusCode(HttpStatus.NO_CONTENT);
+						addCacheHeaders(response);
+					}
+				}
+				else if (transportType.supportsCors()) {
+					sendMethodNotAllowed(response, supportedMethod, HttpMethod.OPTIONS);
+				}
+				else {
+					sendMethodNotAllowed(response, supportedMethod);
+				}
+				return;
+			}
+
 			SockJsSession session = this.sessions.get(sessionId);
 			if (session == null) {
 				if (transportHandler instanceof SockJsSessionFactory) {
@@ -262,7 +265,7 @@ public class TransportHandlingSockJsService extends AbstractSockJsService implem
 			}
 
 			if (transportType.supportsCors()) {
-				if (!checkAndAddCorsHeaders(request, response)) {
+				if (!checkOrigin(request, response)) {
 					return;
 				}
 			}
@@ -287,7 +290,9 @@ public class TransportHandlingSockJsService extends AbstractSockJsService implem
 	@Override
 	protected boolean validateRequest(String serverId, String sessionId, String transport) {
 		if (!getAllowedOrigins().contains("*") && !TransportType.fromValue(transport).supportsOrigin()) {
-			logger.error("Origin check has been enabled, but this transport does not support it");
+			if (logger.isWarnEnabled()) {
+				logger.warn("Origin check has been enabled, but transport " + transport + " does not support it");
+			}
 			return false;
 		}
 		return super.validateRequest(serverId, sessionId, transport);

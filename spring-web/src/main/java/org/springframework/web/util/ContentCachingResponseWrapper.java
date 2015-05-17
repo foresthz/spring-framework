@@ -28,7 +28,7 @@ import javax.servlet.http.HttpServletResponseWrapper;
 import org.springframework.util.FastByteArrayOutputStream;
 
 /**
- * {@link javax.servlet.http-HttpServletResponse} wrapper that caches all content written to
+ * {@link javax.servlet.http.HttpServletResponse} wrapper that caches all content written to
  * the {@linkplain #getOutputStream() output stream} and {@linkplain #getWriter() writer},
  * and allows this content to be retrieved via a {@link #getContentAsByteArray() byte array}.
  *
@@ -36,6 +36,7 @@ import org.springframework.util.FastByteArrayOutputStream;
  *
  * @author Juergen Hoeller
  * @since 4.1.3
+ * @see ContentCachingRequestWrapper
  */
 public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 
@@ -91,7 +92,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper {
 	}
 
 	@Override
-	public ServletOutputStream getOutputStream() {
+	public ServletOutputStream getOutputStream() throws IOException {
 		return this.outputStream;
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,20 +66,22 @@ public class MethodParameter {
 
 
 	/**
-	 * Create a new MethodParameter for the given method, with nesting level 1.
+	 * Create a new {@code MethodParameter} for the given method, with nesting level 1.
 	 * @param method the Method to specify a parameter for
-	 * @param parameterIndex the index of the parameter
+	 * @param parameterIndex the index of the parameter: -1 for the method
+	 * return type; 0 for the first method parameter; 1 for the second method
+	 * parameter, etc.
 	 */
 	public MethodParameter(Method method, int parameterIndex) {
 		this(method, parameterIndex, 1);
 	}
 
 	/**
-	 * Create a new MethodParameter for the given method.
+	 * Create a new {@code MethodParameter} for the given method.
 	 * @param method the Method to specify a parameter for
-	 * @param parameterIndex the index of the parameter
-	 * (-1 for the method return type; 0 for the first method parameter,
-	 * 1 for the second method parameter, etc)
+	 * @param parameterIndex the index of the parameter: -1 for the method
+	 * return type; 0 for the first method parameter; 1 for the second method
+	 * parameter, etc.
 	 * @param nestingLevel the nesting level of the target type
 	 * (typically 1; e.g. in case of a List of Lists, 1 would indicate the
 	 * nested List, whereas 2 would indicate the element of the nested List)
@@ -309,6 +311,7 @@ public class MethodParameter {
 	/**
 	 * Return the generic type of the method/constructor parameter.
 	 * @return the parameter type (never {@code null})
+	 * @since 3.0
 	 */
 	public Type getGenericParameterType() {
 		if (this.genericParameterType == null) {
@@ -324,6 +327,12 @@ public class MethodParameter {
 		return this.genericParameterType;
 	}
 
+	/**
+	 * Return the nested type of the method/constructor parameter.
+	 * @return the parameter type (never {@code null})
+	 * @see #getNestingLevel()
+	 * @since 3.1
+	 */
 	public Class<?> getNestedParameterType() {
 		if (this.nestingLevel > 1) {
 			Type type = getGenericParameterType();
@@ -347,6 +356,29 @@ public class MethodParameter {
 		}
 		else {
 			return getParameterType();
+		}
+	}
+
+	/**
+	 * Return the nested generic type of the method/constructor parameter.
+	 * @return the parameter type (never {@code null})
+	 * @see #getNestingLevel()
+	 * @since 4.2
+	 */
+	public Type getNestedGenericParameterType() {
+		if (this.nestingLevel > 1) {
+			Type type = getGenericParameterType();
+			for (int i = 2; i <= this.nestingLevel; i++) {
+				if (type instanceof ParameterizedType) {
+					Type[] args = ((ParameterizedType) type).getActualTypeArguments();
+					Integer index = getTypeIndexForLevel(i);
+					type = args[index != null ? index : args.length - 1];
+				}
+			}
+			return type;
+		}
+		else {
+			return getGenericParameterType();
 		}
 	}
 

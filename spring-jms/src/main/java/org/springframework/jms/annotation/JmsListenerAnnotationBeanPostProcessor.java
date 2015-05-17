@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -208,8 +208,8 @@ public class JmsListenerAnnotationBeanPostProcessor
 			});
 			if (annotatedMethods.isEmpty()) {
 				this.nonAnnotatedClasses.add(bean.getClass());
-				if (logger.isDebugEnabled()) {
-					logger.debug("No @JmsListener annotations found on bean class: " + bean.getClass());
+				if (logger.isTraceEnabled()) {
+					logger.trace("No @JmsListener annotations found on bean class: " + bean.getClass());
 				}
 			}
 			else {
@@ -247,6 +247,7 @@ public class JmsListenerAnnotationBeanPostProcessor
 		endpoint.setBean(bean);
 		endpoint.setMethod(method);
 		endpoint.setMessageHandlerMethodFactory(this.messageHandlerMethodFactory);
+		endpoint.setBeanFactory(this.beanFactory);
 		endpoint.setId(getEndpointId(jmsListener));
 		endpoint.setDestination(resolve(jmsListener.destination()));
 		if (StringUtils.hasText(jmsListener.selector())) {
